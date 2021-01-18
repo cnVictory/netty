@@ -47,6 +47,8 @@ public class DefaultSocketChannelConfig extends DefaultChannelConfig
         super(channel);
         this.javaSocket = ObjectUtil.checkNotNull(javaSocket, "javaSocket");
 
+        // 设置nagle算法为true，也就是TCP_NODELAY为true
+        // 目的是让小的数据包尽快发出去，降低延时
         // Enable TCP_NODELAY by default if possible.
         if (PlatformDependent.canEnableTcpNoDelayByDefault()) {
             try {

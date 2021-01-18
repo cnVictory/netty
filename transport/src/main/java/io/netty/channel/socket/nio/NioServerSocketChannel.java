@@ -69,6 +69,8 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
     private final ServerSocketChannelConfig config;
 
     /**
+     * 使用这个构造函数，创建服务端的channel 也就是创建jdk、底层的方法
+     * 并创建ServerSocketChannel的配置类
      * Create a new instance
      */
     public NioServerSocketChannel() {
@@ -86,6 +88,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
+        // 监听SelectionKey.OP_ACCEPT
         super(null, channel, SelectionKey.OP_ACCEPT);
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
@@ -144,10 +147,15 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+
+        // 这里是获取服务端启动过程中，所使用的JDK的channel
         SocketChannel ch = SocketUtils.accept(javaChannel());
 
         try {
             if (ch != null) {
+
+                // 把jdk的socketChannel编程netty的NioSocketChannel
+                // 这里的this是服务端的NioServerSocketChannel， ch是java的socketChannel
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }

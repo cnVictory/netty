@@ -492,10 +492,12 @@ public class IdleStateHandler extends ChannelDuplexHandler {
                 nextDelay -= ticksInNanos() - lastReadTime;
             }
 
+            // 已经超过时间没有收到定时的读信息
             if (nextDelay <= 0) {
                 // Reader is idle - set a new timeout and notify the callback.
                 readerIdleTimeout = schedule(ctx, this, readerIdleTimeNanos, TimeUnit.NANOSECONDS);
 
+                // 第一次出现读空闲
                 boolean first = firstReaderIdleEvent;
                 firstReaderIdleEvent = false;
 
@@ -523,10 +525,13 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
             long lastWriteTime = IdleStateHandler.this.lastWriteTime;
             long nextDelay = writerIdleTimeNanos - (ticksInNanos() - lastWriteTime);
+
+            // 出现写空闲
             if (nextDelay <= 0) {
                 // Writer is idle - set a new timeout and notify the callback.
                 writerIdleTimeout = schedule(ctx, this, writerIdleTimeNanos, TimeUnit.NANOSECONDS);
 
+                // 第一次写空闲
                 boolean first = firstWriterIdleEvent;
                 firstWriterIdleEvent = false;
 

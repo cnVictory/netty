@@ -77,10 +77,14 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        // 设置客户端channel的id unsafe 和pipeline
         super(parent);
         this.ch = ch;
+
+        // 新创建nioSOcketChannel的时候，关心的事件是SelectionKey.OP_READ事件
         this.readInterestOp = readInterestOp;
         try {
+            // 设置服务端的channel为非阻塞
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -203,6 +207,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         /**
          * Read from underlying {@link SelectableChannel}
+         * NioMessageUnsafe是服务端的unsafe
+         * NioByteUnsafe是客户端的unsafe操作类
          */
         void read();
 
@@ -377,6 +383,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                // javaChannel方法返回jdk底层的selectableChannel
+                // 并把netty自己的channel传递给attachment属性，也就是这里的this代表netty的channel，把它传给jdk底层的channel当做一个attachement属性
+                // 就可以通过jdk的nio的channel 获取对应的netty的channel
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
@@ -402,6 +411,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doBeginRead() throws Exception {
         // Channel.read() or ChannelHandlerContext.read() was called
+        // 拿到selectionKey
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) {
             return;
@@ -409,6 +419,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         readPending = true;
 
+        // 原来关心的是Accept，现在再加上一个read事件
         final int interestOps = selectionKey.interestOps();
         if ((interestOps & readInterestOp) == 0) {
             selectionKey.interestOps(interestOps | readInterestOp);
@@ -439,6 +450,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         final ByteBufAllocator alloc = alloc();
         if (alloc.isDirectBufferPooled()) {
+            // 创建一个新的堆外内存的bytebuf，然后把原来的非堆外内存的bytebuf写到新创建的对外内存上
             ByteBuf directBuf = alloc.directBuffer(readableBytes);
             directBuf.writeBytes(buf, buf.readerIndex(), readableBytes);
             ReferenceCountUtil.safeRelease(buf);

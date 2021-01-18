@@ -269,15 +269,23 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+
+        // 在这里创建服务端channel
+        // 做了3步： 1.创建channel  2.初始化channel  3.绑定channel到selector上去
         final ChannelFuture regFuture = initAndRegister();
+
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
 
+        // channel已完成
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
+
+            // 绑定端口
+            // 这里还有一个重要的操作就是NioEventLoop的execute执行方法
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
@@ -307,8 +315,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+
+            // 第一步创建channel
+            // 这里使用的是在serverbootstrap.channel(NioServerSocketChannel.class) 传入的channel的类型的构造方法创建channel
+            // 使用NioServerSocketChannel来创建jdk底层的channel
             channel = channelFactory.newChannel();
+
+            // 第二部初始化channel
             init(channel);
+
         } catch (Throwable t) {
             if (channel != null) {
                 // channel can be null if newChannel crashed (eg SocketException("too many open files"))
@@ -320,6 +335,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        // 第三步 注册到selector
+        // 调用register方法，最终调用的就是AbstractChannel的register方法
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
@@ -349,9 +366,12 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
+        // 这里是线程执行器，每个socket连接过来的时候，都会创建一个新的线程去执行
         channel.eventLoop().execute(new Runnable() {
             @Override
             public void run() {
+
+                // 当绑定端口的时候，实际调用的是AbstractChannel的unsafe的bind方法
                 if (regFuture.isSuccess()) {
                     channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
                 } else {

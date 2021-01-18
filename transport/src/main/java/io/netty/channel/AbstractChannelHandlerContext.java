@@ -378,6 +378,8 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             try {
                 ((ChannelInboundHandler) handler()).channelRead(this, msg);
             } catch (Throwable t) {
+
+                // 出现异常的时候，执行exceptionCaught
                 invokeExceptionCaught(t);
             }
         } else {
@@ -488,6 +490,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         final AbstractChannelHandlerContext next = findContextOutbound(MASK_BIND);
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            // 这里
             next.invokeBind(localAddress, promise);
         } else {
             safeExecute(executor, new Runnable() {
@@ -503,6 +506,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeBind(SocketAddress localAddress, ChannelPromise promise) {
         if (invokeHandler()) {
             try {
+                // 调用DefaultChannelPipeline的bind方法
                 ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise);
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
@@ -683,6 +687,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeRead() {
         if (invokeHandler()) {
             try {
+                // 调用defaultChannelPipeline的read方法
                 ((ChannelOutboundHandler) handler()).read(this);
             } catch (Throwable t) {
                 invokeExceptionCaught(t);
@@ -787,6 +792,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
             if (flush) {
+                // 如果调用的是writeAndFlush，这里的flush是true，如果只是write则flush是false
                 next.invokeWriteAndFlush(m, promise);
             } else {
                 next.invokeWrite(m, promise);

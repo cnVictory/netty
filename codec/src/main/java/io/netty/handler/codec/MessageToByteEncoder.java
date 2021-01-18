@@ -99,16 +99,23 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         ByteBuf buf = null;
         try {
+            // 当前能否处理这个对象，如果不能就向前传播，让前一个handler去处理
             if (acceptOutboundMessage(msg)) {
+
+                // 把msg转换成我们传入的泛型类型
                 @SuppressWarnings("unchecked")
                 I cast = (I) msg;
+                // 分配内存，默认分配的是堆外内存
                 buf = allocateBuffer(ctx, cast, preferDirect);
+
+                // 调用业务代码中实现的encode方法
                 try {
                     encode(ctx, cast, buf);
                 } finally {
                     ReferenceCountUtil.release(cast);
                 }
 
+                // 把byteBuf传递到head节点，也就是HeadContext，然后写出去
                 if (buf.isReadable()) {
                     ctx.write(buf, promise);
                 } else {
@@ -124,6 +131,8 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
         } catch (Throwable e) {
             throw new EncoderException(e);
         } finally {
+
+            // 最终释放byteBuf空间
             if (buf != null) {
                 buf.release();
             }

@@ -59,6 +59,9 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
         private final List<Object> readBuf = new ArrayList<Object>();
 
+        /**
+         * 服务端的unsafe操作类
+         */
         @Override
         public void read() {
             assert eventLoop().inEventLoop();
@@ -72,6 +75,8 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+
+                        // 这里是得到新链接的时候，使用jdk底层的accept方法，获取一个socketChannel
                         int localRead = doReadMessages(readBuf);
                         if (localRead == 0) {
                             break;
@@ -87,9 +92,16 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                     exception = t;
                 }
 
+                // readBuf 是channel 也就是通过eventLoop监听到ACCEPT的新链接
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
+
+                    // 当有新链接的时候，会将新链接注册到NioEventLoop的selector上面去
+                    // 这里调用的是serverBootStrapAcceptore里面的fireChannelRead
+                    // ServerBootStrapAcceptor是在什么时候放进去的呢？
+                    // 在serverBootStrap.bind  ->  initAndRegister  -> initChannel 中，在BossGroup
+                    // 中的eventLoop上添加了head 和tail 中间的一个 ServerBootStrapAcceptor 一个handler
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
                 readBuf.clear();

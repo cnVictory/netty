@@ -168,6 +168,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         this.addTaskWakesUp = addTaskWakesUp;
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
         this.executor = ThreadExecutorMap.apply(executor, this);
+
+        // taskQueue 是用来在执行netty的任务的时候，如果判断线程不是在NioEventLoop对应的线程里面去执行的，则直接放到一个任务队列里面，
+        // 再由NioEventLoop对应的线程去执行
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
         this.rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
@@ -824,9 +827,16 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+
+        // 判断当前线程是不是 EventLoop。我们启动服务端的时候使用的是main线程，所以一般来说这里都是false
+        // 也就是当前的线程是main，并不是执行任务的线程
         boolean inEventLoop = inEventLoop();
+
+        // 把当前要执行的任务放到taskQueue中去
         addTask(task);
+
         if (!inEventLoop) {
+            // 启动一个线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -944,6 +954,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
+                    // 创建并启动线程
                     doStartThread();
                     success = true;
                 } finally {
@@ -975,6 +986,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 这里的executor就是ThreadPerTaskExecutor
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -986,7 +998,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+
+                    // 这里是NioEventLoop的执行 重要
+                    /**
+                     * 这里启动了一个线程后，线程的任务就是使用for的死循环，一直读取selector上面的IO事件
+                     */
                     SingleThreadEventExecutor.this.run();
+
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);

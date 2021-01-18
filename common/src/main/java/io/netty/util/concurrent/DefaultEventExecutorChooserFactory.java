@@ -32,9 +32,12 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        // 判断线程执行器的个数是不是2的倍数，比如2 4 6 8 这样子
         if (isPowerOfTwo(executors.length)) {
+            // 使用位与运算
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
+            // 普通取模运算
             return new GenericEventExecutorChooser(executors);
         }
     }
@@ -51,6 +54,10 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
             this.executors = executors;
         }
 
+        /**
+         * 这里是 自增 然后 与 （长度-1）  使用位与的操作效率高
+         * @return
+         */
         @Override
         public EventExecutor next() {
             return executors[idx.getAndIncrement() & executors.length - 1];

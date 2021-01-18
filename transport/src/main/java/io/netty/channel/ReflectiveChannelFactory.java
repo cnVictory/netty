@@ -38,6 +38,10 @@ public class ReflectiveChannelFactory<T extends Channel> implements ChannelFacto
         }
     }
 
+    /*
+        在服务端使用的是NioServerSocketChannel，来通过构造方法反射创建channel
+        在客户端使用的是NioSocketChannel，通过构造方法反射创建channel
+     */
     @Override
     public T newChannel() {
         try {

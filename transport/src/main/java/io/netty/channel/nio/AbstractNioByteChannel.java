@@ -271,6 +271,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected final Object filterOutboundMessage(Object msg) {
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
+            // 传进来的bytebuff如果是直接内存，也就是堆外内存 则直接返回，否则创建一个对外内存
             if (buf.isDirect()) {
                 return msg;
             }

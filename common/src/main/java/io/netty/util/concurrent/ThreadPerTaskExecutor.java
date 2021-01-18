@@ -27,6 +27,10 @@ public final class ThreadPerTaskExecutor implements Executor {
         this.threadFactory = ObjectUtil.checkNotNull(threadFactory, "threadFactory");
     }
 
+    /**
+     * 每次执行一个任务，都会使用threadFactory创建一个新的线程，去执行任务
+     * @param command
+     */
     @Override
     public void execute(Runnable command) {
         threadFactory.newThread(command).start();

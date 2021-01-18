@@ -55,6 +55,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        // 这里的DefaultEventExecutorChooserFactory.INSTANCE 后面负责创建线程选择器
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
 
@@ -72,15 +73,18 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
 
+        // 创建一个线程选择器，每次执行任务的时候，都会创建一个线程实体thread对象
         if (executor == null) {
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
         children = new EventExecutor[nThreads];
 
+        // for循环创建每一个eventLoop
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                // 创建每个NioEventLoop
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
@@ -108,6 +112,8 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        // 创建线程选择器
+        // 线程选择器的作用，是当一个新的连接socket连接服务端时，把这个新链接绑定到workerGroup中的哪个eventLoop上面去，默认的是使用轮询算法
         chooser = chooserFactory.newChooser(children);
 
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {

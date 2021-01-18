@@ -199,10 +199,19 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
         synchronized (this) {
+            // 判断是否重复添加
             checkMultiplicity(handler);
 
+            // 包装秤ChannelHandlerContext   DefaultChannelHandlerContext
+            /*
+                这里的group是一个EventExecutorGroup，实际上是一个业务线程组，类似于EventLoopGroup
+                可以通过这个方式添加一个业务线程组，与NioEventLoop的IO线程分离
+                也可以单独启动一个自定义的线程池，把channelRead的任务添加到自定义业务线程池中，去异步处理
+                详见 https://www.jianshu.com/p/abc278397576
+             */
             newCtx = newContext(group, filterName(name, handler), handler);
 
+            // 添加到双向链表中
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
@@ -215,6 +224,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
 
             EventExecutor executor = newCtx.executor();
+
+            // 后面是执行用户代码中的回调逻辑
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
@@ -281,6 +292,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         if (name == null) {
             return generateName(handler);
         }
+        // 从head节点一点点遍历，看是否有重名的
         checkDuplicateName(name);
         return name;
     }
@@ -594,6 +606,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     private static void checkMultiplicity(ChannelHandler handler) {
         if (handler instanceof ChannelHandlerAdapter) {
+
+            // 是否是可共享，并且是否没有被添加过，才能添加进去
             ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
             if (!h.isSharable() && h.added) {
                 throw new ChannelPipelineException(
@@ -1001,6 +1015,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline read() {
+        // 从尾结点开始读取
         tail.read();
         return this;
     }
@@ -1020,6 +1035,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return tail.writeAndFlush(msg, promise);
     }
 
+    /**
+     * 从tail节点开始往head节点传播
+     * @param msg
+     * @return
+     */
     @Override
     public final ChannelFuture writeAndFlush(Object msg) {
         return tail.writeAndFlush(msg);
@@ -1112,6 +1132,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         // the EventLoop.
         PendingHandlerCallback task = pendingHandlerCallbackHead;
         while (task != null) {
+            // 调用服务端handler的channelAdded方法
             task.execute();
             task = task.next;
         }
@@ -1135,6 +1156,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     private void callHandlerAddedInEventLoop(final AbstractChannelHandlerContext newCtx, EventExecutor executor) {
         newCtx.setAddPending();
+        // 这里回调用户的 handlerAdded
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -1395,8 +1417,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
+            // 把active事件向下传播
             ctx.fireChannelActive();
 
+            // 把以前关心的channel accept事件改成read事件
             readIfIsAutoRead();
         }
 

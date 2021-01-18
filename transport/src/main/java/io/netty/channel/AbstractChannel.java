@@ -46,6 +46,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private final Channel parent;
     private final ChannelId id;
+    // 用于对channel进行读写的类，netty内部使用，不建议外部使用
     private final Unsafe unsafe;
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
@@ -245,6 +246,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     @Override
     public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        // 调用DefaultChannelPipeline的bind方法
         return pipeline.bind(localAddress, promise);
     }
 
@@ -449,6 +451,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
+        /**
+         * 调用register方法，最终调用的就是AbstractChannel的register方法
+         * @param eventLoop
+         * @param promise
+         */
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
@@ -462,15 +469,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 绑定线程，告诉channel 后续所有IO事件都是交给EventLoop来处理
             AbstractChannel.this.eventLoop = eventLoop;
 
             if (eventLoop.inEventLoop()) {
+
+                // 实际注册调用这里
                 register0(promise);
             } else {
                 try {
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
+                            // 第一次注册的，调用这里
                             register0(promise);
                         }
                     });
@@ -485,6 +496,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 实际的注册的方法
+         * @param promise
+         */
         private void register0(ChannelPromise promise) {
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
@@ -493,18 +508,27 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+
+                // 使用jdk底层 来注册channel
                 doRegister();
                 neverRegistered = false;
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+
+                // 添加handler到channel的时候，会触发一些用户的回调
+                // 回调channelAdded
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
+
+                // 回调channelRegistered
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+
+                // 回调channelActive 初始的时候，isActive是false，因为serverBootStrap只是bind了端口
                 if (isActive()) {
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
@@ -524,6 +548,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * 当绑定端口的时候，实际调用的是AbstractChannel的unsafe的bind方法
+         * @param localAddress
+         * @param promise
+         */
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
             assertEventLoop();
@@ -547,6 +576,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             boolean wasActive = isActive();
             try {
+
+                // 使用jdk底层的绑定  NioServerSocketChannel
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -554,6 +585,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 然后调用channelActive方法（调用handler的channelActive方法）
+            // 就是说在上面register的时候，并没有走channelActive。而是在这里bind完端口以后，才会走
+            // channel的头结点是headContext，先走头结点的headContext的channelActive
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
@@ -841,6 +875,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
+                // 实际调用jdk的AbstractNioChannel
                 doBeginRead();
             } catch (final Exception e) {
                 invokeLater(new Runnable() {
@@ -853,10 +888,16 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
         }
 
+        /**
+         * headContext 是把业务数据的byteBuf写到socket上
+         * @param msg
+         * @param promise
+         */
         @Override
         public final void write(Object msg, ChannelPromise promise) {
             assertEventLoop();
 
+            // outBoundBuffer负责缓冲写入的byteBuf
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             if (outboundBuffer == null) {
                 try {
@@ -875,6 +916,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             int size;
             try {
+
+                // 调用abstractNioByteChannel  创建一个directbuf直接内存
                 msg = filterOutboundMessage(msg);
                 size = pipeline.estimatorHandle().size(msg);
                 if (size < 0) {
@@ -889,6 +932,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            // 把本次得到的msg插入到outboundBUff 这个缓冲区里面
             outboundBuffer.addMessage(msg, size, promise);
         }
 

@@ -93,6 +93,9 @@ public abstract class SimpleChannelInboundHandler<I> extends ChannelInboundHandl
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         boolean release = true;
         try {
+            // 判断接收到的数据类型与创建这个SimpleChannelInBoundHandler的时候传入的泛型是否一致，一致才会进行channelRead0
+            // 否则直接向下一个节点传播
+            // 并且最终会释放 byteBuf
             if (acceptInboundMessage(msg)) {
                 @SuppressWarnings("unchecked")
                 I imsg = (I) msg;

@@ -86,7 +86,9 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 return in;
             }
             try {
+                // byteBuff的可读的数据
                 final int required = in.readableBytes();
+                // 可以读的数据大于剩余最大可写的数据  让cumulation来扩容
                 if (required > cumulation.maxWritableBytes() ||
                         (required > cumulation.maxFastWritableBytes() && cumulation.refCnt() > 1) ||
                         cumulation.isReadOnly()) {
@@ -265,14 +267,23 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception { }
 
+    /*
+        这里可以处理粘包的问题
+     */
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        // 数据必须是byteBuf类型的
         if (msg instanceof ByteBuf) {
+            // 用来存储解析出来的数据包
             CodecOutputList out = CodecOutputList.newInstance();
             try {
                 first = cumulation == null;
+                // 把读进来的数据进行累加
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
+
+                // 调用子类对象进行解码
+                // 这里的out是被解析的对象，然后向下传播
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
@@ -293,6 +304,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
                     int size = out.size();
                     firedChannelRead |= out.insertSinceRecycled();
+
+                    // 将解码的数据向下传播
                     fireChannelRead(ctx, out, size);
                 } finally {
                     out.recycle();
@@ -418,11 +431,14 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
         try {
+            // 只要有数据，就循环读
             while (in.isReadable()) {
                 int outSize = out.size();
 
+                // 有解析出来的数据，可以进行传播
                 if (outSize > 0) {
                     fireChannelRead(ctx, out, outSize);
+                    // 读完以后清理
                     out.clear();
 
                     // Check if this handler was removed before continuing with decoding.
@@ -437,6 +453,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 }
 
                 int oldInputLength = in.readableBytes();
+                // 调用业务中自己实现的解码器的decode方法，并把解析的结果放到out中传递回去
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.
@@ -447,10 +464,18 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     break;
                 }
 
+                // 如果通过上面的decode方法没有解析出数据来
                 if (outSize == out.size()) {
+                    // 自定义的decode方法执行完以后，跟执行之前的byteBuff字节流的可读数据进行对比
+                    // 如果长度与in里面的长度一致，就说明当前并不能拼装成一个完整的数据包
                     if (oldInputLength == in.readableBytes()) {
+
+                        // 本次没有足够的数据包，只有等下面再读取几次，才能解析出完整的数据
                         break;
                     } else {
+
+                        // 走到这里说明上面的if为false
+                        // 说明本次已经从byteBuf中读取一点数据了，只是还不能拼成一个完整的对象，就继续读
                         continue;
                     }
                 }
@@ -498,13 +523,16 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             throws Exception {
         decodeState = STATE_CALLING_CHILD_DECODE;
         try {
+            // 这里是要使用自定义的解码器的decode方法
             decode(ctx, in, out);
         } finally {
             boolean removePending = decodeState == STATE_HANDLER_REMOVED_PENDING;
             decodeState = STATE_INIT;
             if (removePending) {
+                // 将每个完整的数据包分别向后传播
                 fireChannelRead(ctx, out, out.size());
                 out.clear();
+                // 处理完了就清掉cumulation
                 handlerRemoved(ctx);
             }
         }
